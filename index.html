@@ -89,7 +89,7 @@ button {
 
 table {
     width: 100%;
-    min-width: 1400px;
+    min-width: 1500px;
     border-collapse: collapse;
 }
 
@@ -138,12 +138,16 @@ textarea { resize: vertical; }
         <div id="doneMetric">0 / 0</div>
     </div>
     <div class="metric">
+        <span>Avg Marks</span>
+        <div id="avgMarks">-</div>
+    </div>
+    <div class="metric">
         <span>Avg Accuracy</span>
         <div id="avgAccuracy">-</div>
     </div>
     <div class="metric">
-        <span>Best Accuracy</span>
-        <div id="bestAccuracy">-</div>
+        <span>Best Marks</span>
+        <div id="bestMarks">-</div>
     </div>
     <div class="progress">
         <span id="progressLabel">Progress: 0%</span>
@@ -159,6 +163,7 @@ textarea { resize: vertical; }
 <tr>
 <th>Date</th>
 <th>Mock</th>
+<th>Marks</th>
 <th>Correct</th>
 <th>Wrong</th>
 <th>Attempted</th>
@@ -176,7 +181,7 @@ textarea { resize: vertical; }
 </div>
 
 <script>
-const STORAGE_KEY = "gate_mock_tracker_accuracy_v1";
+const STORAGE_KEY = "gate_mock_tracker_final_v1";
 const TOTAL_MOCKS = 21;
 const START_DATE = new Date(2025, 8, 1); // Sept 1, 2025
 
@@ -206,6 +211,7 @@ function generateSchedule() {
                 date: date.toISOString().split('T')[0],
                 day: date.toLocaleDateString('en-US', { weekday: 'short' }),
                 mock: `Mock ${count}`,
+                marks: "",
                 correct: "",
                 wrong: "",
                 attempted: "",
@@ -226,7 +232,7 @@ function generateSchedule() {
 
 function persist() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        version: 3,
+        version: 4,
         data: tableData
     }));
 }
@@ -251,6 +257,7 @@ function render() {
 <br><small>${r.day}</small>
 </td>
 <td><b>${r.mock}</b></td>
+<td><input type="number" value="${r.marks}" onchange="update(${i},'marks',this.value)"></td>
 <td><input type="number" min="0" value="${r.correct}" onchange="update(${i},'correct',this.value)"></td>
 <td><input type="number" min="0" value="${r.wrong}" onchange="update(${i},'wrong',this.value)"></td>
 <td>${r.attempted || "-"}</td>
@@ -325,13 +332,17 @@ function getAverageAccuracy() {
 function updateSummary() {
     const total = tableData.length;
     const done = tableData.filter(r => r.status === "Done").length;
-    const accs = tableData.map(r => parseFloat(r.accuracy)).filter(v => !isNaN(v));
+
+    const marksArr = tableData.map(r => parseFloat(r.marks)).filter(v => !isNaN(v));
+    const accArr = tableData.map(r => parseFloat(r.accuracy)).filter(v => !isNaN(v));
 
     document.getElementById("doneMetric").innerText = `${done} / ${total}`;
+    document.getElementById("avgMarks").innerText =
+        marksArr.length ? (marksArr.reduce((a,b)=>a+b,0)/marksArr.length).toFixed(1) : "-";
+    document.getElementById("bestMarks").innerText =
+        marksArr.length ? Math.max(...marksArr) : "-";
     document.getElementById("avgAccuracy").innerText =
-        accs.length ? (accs.reduce((a,b)=>a+b,0)/accs.length).toFixed(1)+"%" : "-";
-    document.getElementById("bestAccuracy").innerText =
-        accs.length ? Math.max(...accs).toFixed(1)+"%" : "-";
+        accArr.length ? (accArr.reduce((a,b)=>a+b,0)/accArr.length).toFixed(1)+"%" : "-";
 
     const p = Math.round((done/total)*100);
     document.getElementById("progressLabel").innerText = `Progress: ${p}%`;
@@ -340,9 +351,9 @@ function updateSummary() {
 
 /* ---------- CSV ---------- */
 function downloadCSV() {
-    let csv = "Date,Mock,Correct,Wrong,Attempted,Accuracy,Status\n";
+    let csv = "Date,Mock,Marks,Correct,Wrong,Attempted,Accuracy,Status\n";
     tableData.forEach(r => {
-        csv += `${r.date},${r.mock},${r.correct},${r.wrong},${r.attempted},${r.accuracy},${r.status}\n`;
+        csv += `${r.date},${r.mock},${r.marks},${r.correct},${r.wrong},${r.attempted},${r.accuracy},${r.status}\n`;
     });
     const a = document.createElement("a");
     a.href = encodeURI("data:text/csv;charset=utf-8," + csv);
