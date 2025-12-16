@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GATE 2026 Interactive Mock Tracker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+:root {
+    --bg: #f4f7f6;
+    --header: #2c3e50;
+    --accent: #3498db;
+    --good: #e7f9ef;
+    --bad: #fceaea;
+    --green: #27ae60;
+    --red: #e74c3c;
+}
+
+body {
+    font-family: 'Segoe UI', sans-serif;
+    background: var(--bg);
+    margin: 0;
+    padding: 20px;
+}
+
+h1 {
+    margin: 0;
+    color: var(--header);
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    margin-bottom: 15px;
+    gap: 10px;
+}
+
+button {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    color: white;
+    font-weight: 500;
+}
+
+.btn-download { background: var(--green); }
+.btn-reset { background: var(--red); }
+
+.summary {
+    background: white;
+    padding: 14px;
+    border-radius: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.metric span {
+    font-size: 12px;
+    color: #666;
+}
+
+.metric div {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.progress {
+    flex: 1;
+    min-width: 200px;
+}
+
+.progress-bar {
+    background: #ddd;
+    height: 12px;
+    border-radius: 50px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 1200px;
+    background: white;
+}
+
+th, td {
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+    font-size: 14px;
+}
+
+th {
+    background: var(--header);
+    color: white;
+    position: sticky;
+    top: 0;
+}
+
+tr:hover { background: #f1f1f1; }
+.row-good { background: var(--good); }
+.row-bad { background: var(--bad); }
+
+input, textarea, select {
+    width: 100%;
+    padding: 6px;
+    font-size: 13px;
+}
+
+textarea { resize: vertical; }
+
+.status-done { color: var(--green); font-weight: bold; }
+.status-pending { color: var(--red); font-weight: bold; }
+
+.table-wrap {
+    overflow-x: auto;
+    border-radius: 8px;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>GATE 2026 Mock Tracker</h1>
+    <div>
+        <button class="btn-download" onclick="downloadCSV()">Download CSV</button>
+        <button class="btn-reset" onclick="resetData()">Reset</button>
+    </div>
+</header>
+
+<div class="summary">
+    <div class="metric">
+        <span>Mocks Done</span>
+        <div id="doneMetric">0 / 0</div>
+    </div>
+    <div class="metric">
+        <span>Avg Score</span>
+        <div id="avgScore">-</div>
+    </div>
+    <div class="metric">
+        <span>Best Score</span>
+        <div id="bestScore">-</div>
+    </div>
+    <div class="progress">
+        <span id="progressLabel">Progress: 0%</span>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+    </div>
+</div>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+<th>Date</th>
+<th>Mock</th>
+<th>Score</th>
+<th>Accuracy %</th>
+<th>Wrong Topics</th>
+<th>Error Type</th>
+<th>Unattempted</th>
+<th>Reason</th>
+<th>Action Plan</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody id="tableBody"></tbody>
+</table>
+</div>
+
+<script>
+const STORAGE_KEY = "gate_mock_tracker_v2";
+const TOTAL_MARKS = 100;
+const TOTAL_MOCKS = 21;
+const START_DATE = new Date(2025, 8, 1); // Sept 1, 2025
+
+let tableData = [];
+
+/* ---------- INIT ---------- */
+function init() {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+        tableData = JSON.parse(saved).data;
+    } else {
+        tableData = generateSchedule();
+        persist();
+    }
+    render();
+}
+
+/* ---------- DATA ---------- */
+function generateSchedule() {
+    let data = [];
+    let date = new Date(START_DATE);
+    let count = 1;
+
+    while (count <= TOTAL_MOCKS) {
+        const day = date.getDay();
+        if ([2,4,6].includes(day)) { // Tue Thu Sat
+            data.push({
+                date: date.toISOString().split('T')[0],
+                day: date.toLocaleDateString('en-US', { weekday: 'short' }),
+                mock: `Mock ${count}`,
+                score: "",
+                accuracy: "",
+                wrong: "",
+                error: "",
+                unattempted: "",
+                reason: "",
+                action: "",
+                status: "Pending"
+            });
+            count++;
+        }
+        date.setDate(date.getDate() + 1);
+    }
+    return data;
+}
+
+function persist() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        version: 2,
+        data: tableData
+    }));
+}
+
+/* ---------- RENDER ---------- */
+function render() {
+    const avgAcc = getAverageAccuracy();
+    const tbody = document.getElementById("tableBody");
+    tbody.innerHTML = "";
+
+    tableData.forEach((r, i) => {
+        const tr = document.createElement("tr");
+        const acc = parseFloat(r.accuracy);
+
+        if (!isNaN(acc) && avgAcc !== null) {
+            acc >= avgAcc ? tr.classList.add("row-good") : tr.classList.add("row-bad");
+        }
+
+        tr.innerHTML = `
+<td>
+<input type="date" value="${r.date}" onchange="update(${i},'date',this.value)">
+<br><small>${r.day}</small>
+</td>
+<td><b>${r.mock}</b></td>
+<td><input type="number" value="${r.score}" onchange="update(${i},'score',this.value)"></td>
+<td>${r.accuracy || '-'}</td>
+<td><textarea onchange="update(${i},'wrong',this.value)">${r.wrong}</textarea></td>
+<td>
+<select onchange="update(${i},'error',this.value)">
+<option value="">-</option>
+<option ${r.error==="Concept"?"selected":""}>Concept</option>
+<option ${r.error==="Calc"?"selected":""}>Calc</option>
+<option ${r.error==="Guess"?"selected":""}>Guess</option>
+<option ${r.error==="Silly"?"selected":""}>Silly</option>
+</select>
+</td>
+<td><textarea onchange="update(${i},'unattempted',this.value)">${r.unattempted}</textarea></td>
+<td>
+<select onchange="update(${i},'reason',this.value)">
+<option value="">-</option>
+<option ${r.reason==="Time"?"selected":""}>Time</option>
+<option ${r.reason==="Forgot"?"selected":""}>Forgot</option>
+<option ${r.reason==="Skip"?"selected":""}>Skip</option>
+</select>
+</td>
+<td><textarea onchange="update(${i},'action',this.value)">${r.action}</textarea></td>
+<td class="${r.status==='Done'?'status-done':'status-pending'}">${r.status}</td>
+`;
+        tbody.appendChild(tr);
+    });
+
+    updateSummary();
+}
+
+/* ---------- UPDATE ---------- */
+function update(i, field, value) {
+    tableData[i][field] = value;
+
+    if (field === "score") {
+        const s = parseFloat(value);
+        if (!isNaN(s)) {
+            tableData[i].accuracy = ((s / TOTAL_MARKS) * 100).toFixed(1);
+            tableData[i].status = "Done";
+        } else {
+            tableData[i].accuracy = "";
+            tableData[i].status = "Pending";
+        }
+    }
+
+    if (field === "date") {
+        const d = new Date(value);
+        tableData[i].day = d.toLocaleDateString('en-US', { weekday: 'short' });
+    }
+
+    persist();
+    render();
+}
+
+/* ---------- SUMMARY ---------- */
+function getAverageAccuracy() {
+    const a = tableData.map(r=>parseFloat(r.accuracy)).filter(v=>!isNaN(v));
+    if (!a.length) return null;
+    return a.reduce((x,y)=>x+y,0)/a.length;
+}
+
+function updateSummary() {
+    const total = tableData.length;
+    const done = tableData.filter(r=>r.status==="Done").length;
+    const scores = tableData.map(r=>parseFloat(r.score)).filter(v=>!isNaN(v));
+
+    document.getElementById("doneMetric").innerText = `${done} / ${total}`;
+    document.getElementById("avgScore").innerText =
+        scores.length ? (scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1) : "-";
+    document.getElementById("bestScore").innerText =
+        scores.length ? Math.max(...scores) : "-";
+
+    const p = Math.round((done/total)*100);
+    document.getElementById("progressLabel").innerText = `Progress: ${p}%`;
+    document.getElementById("progressFill").style.width = p+"%";
+}
+
+/* ---------- CSV ---------- */
+function downloadCSV() {
+    let csv = "Date,Mock,Score,Accuracy,Wrong,Error,Unattempted,Reason,Action,Status\n";
+    tableData.forEach(r=>{
+        csv += `${r.date},${r.mock},${r.score},${r.accuracy},"${r.wrong.replace(/\n/g,' ')}",${r.error},"${r.unattempted.replace(/\n/g,' ')}",${r.reason},"${r.action.replace(/\n/g,' ')}",${r.status}\n`;
+    });
+    const a = document.createElement("a");
+    a.href = encodeURI("data:text/csv;charset=utf-8,"+csv);
+    a.download = "GATE_Mock_Tracker.csv";
+    a.click();
+}
+
+/* ---------- RESET ---------- */
+function resetData() {
+    if (confirm("Delete all progress?")) {
+        localStorage.removeItem(STORAGE_KEY);
+        location.reload();
+    }
+}
+
+init();
+</script>
+
+</body>
+</html>
